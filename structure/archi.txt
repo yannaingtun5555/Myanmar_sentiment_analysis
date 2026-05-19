@@ -1,0 +1,255 @@
+================================================================================
+         MULTILINGUAL SENTIMENT ANALYSIS FOR MYANMAR TEXT - COMPLETE ARCHITECTURE
+================================================================================
+
+PROJECT OVERVIEW
+================================================================================
+Build a complete sentiment analysis system for Myanmar (Burmese) text capable of 
+classifying social media comments, reviews, and user-generated content into 
+Positive, Negative, and Neutral categories.
+
+Time estimate: 4-6 weeks full-time or 2-3 months part-time
+Difficulty: Advanced (⭐⭐⭐⭐)
+
+
+SYSTEM ARCHITECTURE DIAGRAM
+================================================================================
+
+Phase 1: Data Collection & Preprocessing
+────────────────────────────────────────────────────────────────────────────────
+  Facebook Comments    YouTube Comments    Product Reviews    News Articles
+         │                    │                   │                  │
+         └────────────────────┴───────────────────┴──────────────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │   Data Collection      │
+                        │   (Web Scraping/API)   │
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │   Text Preprocessing   │
+                        │  • Zawgyi → Unicode    │
+                        │  • Syllable Tokenize   │
+                        │  • Clean/Normalize     │
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │   Manual Annotation    │
+                        │  (Positive/Neutral/    │
+                        │      Negative)         │
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │   Train/Val/Test Split │
+                        │    (70%/15%/15%)       │
+                        └───────────────────────┘
+
+Phase 2: Model Development
+────────────────────────────────────────────────────────────────────────────────
+        Base Pre-trained Model
+        (XLM-RoBERTa-base or mBERT)
+                    │
+                    ▼
+        ┌───────────────────────┐
+        │   Fine-tuning Layer    │
+        │   • 3-class classifier │
+        │   • Dropout (0.2-0.3)  │
+        └───────────┬───────────┘
+                    │
+                    ▼
+        ┌───────────────────────┐
+        │   Training Pipeline    │
+        │   • Batch size: 8-16   │
+        │   • LR: 2e-5           │
+        │   • Epochs: 3-5        │
+        │   • F1 score tracking  │
+        └───────────┬───────────┘
+                    │
+                    ▼
+        ┌───────────────────────┐
+        │   Model Export         │
+        │   (PyTorch/ONNX)       │
+        └───────────────────────┘
+
+Phase 3: Deployment & Integration
+────────────────────────────────────────────────────────────────────────────────
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                         FASTAPI BACKEND                                 │
+  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                 │
+  │  │ /predict    │    │ /predict    │    │ /health     │                 │
+  │  │   (single)  │    │   (batch)   │    │             │                 │
+  │  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘                 │
+  │         │                  │                  │                         │
+  │         └──────────────────┼──────────────────┘                         │
+  │                            │                                            │
+  │                   ┌────────▼────────┐                                   │
+  │                   │  Model Loader   │                                   │
+  │                   │  (cached in    │                                   │
+  │                   │   memory)       │                                   │
+  │                   └────────────────┘                                   │
+  └─────────────────────────────────────────────────────────────────────────┘
+                    │                           │
+                    │ REST API                   │ REST API
+                    ▼                           ▼
+  ┌─────────────────────────────┐   ┌─────────────────────────────┐
+  │      TELEGRAM BOT           │   │      WEB DASHBOARD          │
+  │  • User sends Myanmar text  │   │  • Real-time predictions    │
+  │  • Bot returns sentiment    │   │  • Batch processing         │
+  │  • Builds on your CSV bot   │   │  • Analytics visualization  │
+  └─────────────────────────────┘   └─────────────────────────────┘
+
+
+PROJECT FOLDER STRUCTURE
+================================================================================
+myanmar-sentiment-analysis/
+│
+├── data/
+│   ├── raw/                      # Collected raw data
+│   ├── processed/                 # Cleaned & normalized data
+│   ├── annotated/                 # Manually labeled data
+│   └── datasets/                  # Final train/val/test splits
+│
+├── notebooks/
+│   ├── 01_data_exploration.ipynb
+│   ├── 02_preprocessing.ipynb
+│   ├── 03_model_training.ipynb
+│   └── 04_evaluation.ipynb
+│
+├── src/
+│   ├── data/
+│   │   ├── collector.py          # Web scraping/social media API
+│   │   ├── preprocessor.py       # Zawgyi→Unicode, tokenization
+│   │   └── augment.py            # Data augmentation for low-resource
+│   │
+│   ├── models/
+│   │   ├── train.py              # Fine-tuning script
+│   │   ├── predict.py            # Inference wrapper
+│   │   └── config.py             # Model hyperparameters
+│   │
+│   ├── api/
+│   │   ├── main.py               # FastAPI application
+│   │   ├── schemas.py            # Request/response models
+│   │   └── dependencies.py       # Model loading
+│   │
+│   └── bot/
+│       └── telegram_bot.py       # Telegram bot integration
+│
+├── deployments/
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── requirements.txt
+│
+├── tests/
+│   ├── test_preprocessing.py
+│   ├── test_model.py
+│   └── test_api.py
+│
+├── scripts/
+│   ├── download_datasets.py
+│   ├── run_annotation_helpers.py
+│   └── evaluate_model.py
+│
+├── config/
+│   └── config.yaml
+│
+└── README.md
+
+
+PHASE 1: DATA COLLECTION & PREPROCESSING
+================================================================================
+
+Existing Datasets Available:
+
+| Dataset Source                    | Type              | Size   | Access              |
+|-----------------------------------|-------------------|--------|---------------------|
+| kalixlouiis/burmese-sentiment     | Social media      | ~10k   | Hugging Face        |
+| chuuhtetnaing/myanmar-sentiment   | Facebook comments | ~5k    | Hugging Face        |
+| Custom collection                 | Various           | Variable| Scraping API        |
+
+Key Preprocessing Steps:
+────────────────────────────────────────────────────────────────────────────────
+1. Zawgyi to Unicode conversion (critical - many Myanmar texts use Zawgyi)
+2. Text cleaning (remove URLs, emojis, special characters)
+3. Syllable tokenization using SimboloSiamese library
+4. Train/Validation/Test split: 70%/15%/15%
+
+
+PHASE 2: MODEL DEVELOPMENT
+================================================================================
+
+Base Model Comparison:
+
+| Model              | Pros                              | Cons                    | Performance |
+|--------------------|-----------------------------------|-------------------------|-------------|
+| XLM-RoBERTa-base   | Multilingual, strong transfer     | Larger (550MB)          | 84.7% F1    |
+| mBERT              | Supports 104 languages            | Older architecture      | Comparable  |
+| BiLSTM+Attention   | Lightweight, interpretable        | Lower accuracy          | 85-86%      |
+
+Recommended Hyperparameters (Proven Working Values):
+
+| Parameter              | Value     | Why                                   |
+|------------------------|-----------|---------------------------------------|
+| Learning rate          | 2e-5      | Standard for fine-tuning              |
+| Batch size             | 8         | Small dataset, prevents overfitting   |
+| Epochs                 | 3         | More epochs cause overfitting         |
+| Max sequence length    | 128       | Myanmar sentences typically short     |
+| Optimizer              | AdamW     | Default for transformers              |
+| Weight decay           | 0.01      | Regularization                        |
+| Warmup steps           | 500       | Stable training start                 |
+
+REQUIREMENTS.TXT
+================================================================================
+transformers==4.36.0
+torch==2.1.0
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-telegram-bot==20.7
+aiohttp==3.9.0
+pandas==2.1.3
+numpy==1.24.3
+scikit-learn==1.3.2
+datasets==2.15.0
+accelerate==0.25.0
+SimboloSiamese==0.2.7
+
+
+EXPECTED RESULTS
+================================================================================
+Metric              Expected Value
+────────────────────────────────────────────────────────────────────────────────
+Accuracy            84-85%
+F1 Score (weighted) 84-85%
+Precision           84-85%
+Recall              84-85%
+Inference time      < 100ms per text
+
+
+SUCCESS CRITERIA & DELIVERABLES
+================================================================================
+1. Fine-tuned Model - XLM-RoBERTa for Myanmar sentiment (84%+ F1)
+2. REST API - FastAPI with /predict and /predict_batch endpoints
+3. Telegram Bot - Sentiment analysis bot (builds on your CSV bot experience)
+4. Web Dashboard - Streamlit app for visualization (optional)
+5. Documentation - Complete README, API docs, and training notes
+6. Deployment - Docker container ready for cloud hosting
+
+
+WEEK-BY-WEEK TIMELINE
+================================================================================
+Week 1: Data collection & preprocessing → 5K-10K labeled Myanmar texts
+Week 2: Model fine-tuning → Trained model, 84%+ F1
+Week 3: API development & testing → FastAPI endpoints, unit tests
+Week 4: Bot integration & deployment → Telegram bot live, documentation
+
+Academic References:
+────────────────────────────────────────────────────────────────────────────────
+• Mao, C., et al. "Burmese Sentiment Analysis Based on Transfer Learning" 
+  - JIPS, 2023
+• "Neural Sentiment Network for Myanmar Using Attention Mechanism" 
+  - IEEE Xplore, 2024
+• "Sentiment Classification of Fine-Tuned mBERT for Myanmar Cosmetic Domain" 
+  - IEEE, 2025
