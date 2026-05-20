@@ -99,6 +99,18 @@ myanmar-sentiment-analysis/
 │   ├── 01_data_exploration.ipynb
 │   └── 02_preprocessing.ipynb
 │
+├── models/                                    # NEW - Model storage
+│   ├── trained/                              # Trained models
+│   │   ├── xlm-roberta-base-emotion/        # Your trained model
+│   │   │   ├── config.json
+│   │   │   ├── model.safetensors
+│   │   │   ├── tokenizer.json
+│   │   │   ├── tokenizer_config.json
+│   │   │   ├── sentencepiece.bpe.model
+│   │   │   └── label_mapping.json
+│   │   └── model_metadata.json               # Model version tracking
+│   └── cache/    
+|
 ├── src/
 │   ├── data/
 │   │   ├── collector.py               # YouTube API interaction script
