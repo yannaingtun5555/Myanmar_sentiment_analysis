@@ -13,7 +13,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 # Load your existing model
-model_path = "../../models/trained/xlm-roberta-base-emotion"
+model_path = "../../models/trained/xlm-roberta-improved-91-2"
 
 print(f"Looking for model at: {os.path.abspath(model_path)}")
 if not os.path.exists(model_path):
@@ -75,7 +75,7 @@ new_data = pd.DataFrame([
 ], columns=['cleaned_text', 'emotion_class'])
 
 # Load original data and STANDARDIZE labels
-df_original = pd.read_csv("../../data/processed/dataset_processed.csv")
+df_original = pd.read_csv("../../data/processed/processed_addi1.csv")
 
 # Standardize original labels (capitalize first letter)
 df_original['emotion_class'] = df_original['emotion_class'].str.capitalize()

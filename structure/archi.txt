@@ -9,7 +9,6 @@ normalize Myanmar text, and train/serve an XLM-RoBERTa-base sentiment classifier
 (3-Class: Positive, Negative, Neutral).
 
 Orchestration: Apache Airflow (Scheduled Batch Processing)
-Infrastructure: Docker Containers with GPU Passthrough
 
 
 [1] SYSTEM ARCHITECTURE FLOW DIAGRAM
@@ -55,32 +54,78 @@ Infrastructure: Docker Containers with GPU Passthrough
              User text -> Sentiment          Real-time batch analytics
 
 
-[2] CONTAINER INFRASTRUCTURE (docker-compose.yml)
---------------------------------------------------------------------------------
-├── airflow-scheduler  : Monitors and triggers DAG workflow steps.
-├── airflow-webserver  : Admin UI panel to track pipeline status.
-├── airflow-worker     : Executes lightweight tasks (API calls, SQL scripts).
-├── postgres-db        : Single instance managing staging and warehouse schemas.
-├── fastapi-server     : Dedicated serving container holding the cached model in memory.
-└── ml-train-engine    : Ephemeral, isolated image with nvidia-container-toolkit 
-                         access for isolated, heavy GPU training runs.
-
-
 [3] DATABASE SCHEMA DESIGN (PostgreSQL)
 --------------------------------------------------------------------------------
-STAGING TABLE: raw_comments
-  ├── comment_id   : VARCHAR(50)  [PRIMARY KEY]
-  ├── video_id     : VARCHAR(20)
-  ├── text_display : TEXT         [Raw unstructured text from YouTube]
-  └── scraped_at   : TIMESTAMP    [Default: NOW()]
+TABLE: raw_comments
+comment_id     VARCHAR(50) PRIMARY KEY,
+video_id       VARCHAR(20),
+req_id         INT,
+text_display   TEXT,
+scraped_at     TIMESTAMP DEFAULT NOW()
 
-WAREHOUSE TABLE: preprocessed_comments
-  ├── comment_id   : VARCHAR(50)  [PRIMARY KEY, REFERENCES raw_comments]
-  ├── text_unicode : TEXT         [Normalized Unicode String]
-  ├── tokens       : TEXT[]       [Segmented words/syllables array]
-  ├── inferred_by  : VARCHAR(30)  [Base Model / Manual / Unlabeled]
-  ├── emotion_class: VARCHAR(20)  [Positive, Negative, Neutral]
-  └── processed_at : TIMESTAMP    [Default: NOW()]
+TABLE: preprocessed_comments
+comment_id     VARCHAR(50) PRIMARY KEY REFERENCES raw_comments(comment_id),
+req_id         INT,
+text_unicode   TEXT,
+tokens         TEXT[],   -- tokenized / segmented text
+processed_by   VARCHAR(30),  -- base_model / manual / system
+processed_at   TIMESTAMP DEFAULT NOW()
+
+TABLE: predictions
+id              SERIAL PRIMARY KEY,
+comment_id      VARCHAR(50),
+req_id          INT,
+model_prediction VARCHAR(20),
+model_confidence FLOAT,
+ai_prediction    VARCHAR(20),
+ai_confidence    FLOAT,
+created_at       TIMESTAMP DEFAULT NOW()
+
+TABLE: comparison_results
+id              SERIAL PRIMARY KEY,
+comment_id      VARCHAR(50),
+req_id          INT,
+decision        VARCHAR(20),  
+-- values: MATCH / MISMATCH / LOW_CONFIDENCE
+final_class     VARCHAR(20),  -- optional auto decision
+created_at      TIMESTAMP DEFAULT NOW()
+
+TABLE: final_results
+id              SERIAL PRIMARY KEY,
+comment_id      VARCHAR(50),
+req_id          INT,
+emotion_class   VARCHAR(20),
+source          VARCHAR(20),  -- AUTO / MODEL / AI / HYBRID
+created_at      TIMESTAMP DEFAULT NOW()
+
+TABLE: review_queue
+id              SERIAL PRIMARY KEY,
+comment_id      VARCHAR(50),
+req_id          INT,
+text            TEXT,
+model_prediction VARCHAR(20),
+ai_prediction    VARCHAR(20),
+confidence       FLOAT,
+label            VARCHAR(20), -- NULL initially
+status           VARCHAR(20) DEFAULT 'PENDING',
+created_at       TIMESTAMP DEFAULT NOW()
+
+TABLE: labeled_dataset
+id              SERIAL PRIMARY KEY,
+comment_text    TEXT,
+label           VARCHAR(20),
+source          VARCHAR(20),  -- manual / corrected / original_model
+req_id          INT,
+comment_id      VARCHAR(50),
+created_at      TIMESTAMP DEFAULT NOW()
+
+TABLE: requests
+req_id          SERIAL PRIMARY KEY,
+user_id         BIGINT,
+video_url       TEXT,
+status          VARCHAR(20), 
+-- NEW / PROCESSING / DONE / ERROR
+created_at      TIMESTAMP DEFAULT NOW()
 
 
 [4] PROJECT FOLDER STRUCTURE
@@ -88,16 +133,17 @@ WAREHOUSE TABLE: preprocessed_comments
 myanmar-sentiment-analysis/
 │
 ├── dags/
-│   └── youtube_sentiment_pipeline.py  # Airflow DAG Workflow Definition
-│
-├── data/
-│   ├── raw/                           # for raw datasets
-│   └── processed/                     # for tokenize dataset
-│   └── cleaned/                       # for cleaned dataset
+│   └── youtube_pipeline.py              # Airflow DAG
 │
 ├── notebooks/
 │   ├── 01_data_exploration.ipynb
 │   └── 02_preprocessing.ipynb
+│   └── 03_pretokenization.ipynb
+│
+├── data/
+│   ├── raw/
+│   ├── processed/
+│   └── cleaned/
 │
 ├── models/                                    # NEW - Model storage
 │   ├── trained/                              # Trained models
@@ -108,30 +154,45 @@ myanmar-sentiment-analysis/
 │   │   │   ├── tokenizer_config.json
 │   │   │   ├── sentencepiece.bpe.model
 │   │   │   └── label_mapping.json
-│   │   └── model_metadata.json               # Model version tracking
-│   └── cache/    
-|
+│   │   └── model_metadata.json     
+│   └── metadata.json                    # version tracking
+│
 ├── src/
-│   ├── data/
-│   │   ├── collector.py               # YouTube API interaction script
-│   │   └── preprocessor.py            # Zawgyi→Unicode, SimboloSiamese loop
-│   ├── models/
+│   ├── db/
+│   │   ├── connection.py               # DB connection (MySQL)
+│   │   └── schema.sql                  # DB schema
+│   |
+│   ├── pipeline/
+│   │   ├── fetch_comments.py          # YouTube fetch
+│   │   ├── preprocess.py              # cleaning + tokenizing
+│   │   ├── predict_model.py           # model inference
+│   │   ├── predict_ai.py              # external AI API
+│   │   ├── compare.py                 # compare logic
+│   │   ├── save_results.py            # DB writes
+│   │   └── export_csv.py              # review queue
+│   |
+|   ├── models/
 │   │   ├── train_base.py              # PyTorch/Hugging Face training logic
 │   │   ├── train_database.py          # training logic to comment db
 │   │   └── predict.py                 # Inference wrapper
-│   ├── api/
-│   │   ├── main.py                    # FastAPI application script
-│   │   └── schemas.py                 # Pydantic request/response validation
+|   |
+│   ├── training/
+│   │   ├── train_base.py
+│   │   └── train_from_db.py
+│   |
 │   └── bot/
-│       └── telegram_bot.py            # Async Telegram interface
+│       ├── telegram_request_bot.py
+|       └── telegram_response_bot.py
 │
-├── deployments/
-│   ├── Dockerfile.airflow
-│   ├── Dockerfile.api
-│   ├── Dockerfile.train
-│   └── docker-compose.yml
+├── scripts/
+│   ├── load_csv_to_db.py              # labeled data import
+│   └── retrain.py                     # manual retraining trigger
 │
-└── requirements.txt
+├── configs/
+│   └── config.yaml                    # API keys, DB config
+│
+├── requirements.txt
+└── README.md
 
 
 [5] SYSTEM DEPENDENCIES (requirements.txt)
@@ -149,11 +210,3 @@ datasets==2.15.0
 accelerate==0.25.0
 SimboloSiamese==0.2.7
 apache-airflow-providers-docker==3.8.0
-
-
-[6] TARGET METRICS & PERFORMANCE
---------------------------------------------------------------------------------
-* Accuracy / F1 Score : 84-85% (Weighted)
-* Inference Speed     : < 100ms per text entry via FastAPI caching
-* Pipeline Execution  : Idempotent processing; duplicate IDs update existing records.
-================================================================================

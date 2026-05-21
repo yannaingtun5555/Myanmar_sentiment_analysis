@@ -1,0 +1,12 @@
+# Database
+psycopg2-binary>=2.9.0
+pymysql>=1.0.2
+sqlalchemy>=2.0.0
+
+# Config
+pyyaml>=6.0
+
+# Optional for the pipeline
+google-api-python-client>=2.0.0
+transformers>=4.30.0
+torch>=2.0.0

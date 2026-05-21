@@ -1,8 +1,8 @@
 import csv
 import random
 
-input_file = "dataset_cleaned.csv"
-output_file = "dataset_cleaned.csv"
+input_file = "addi_dataset.csv"
+output_file = "addi_dataset.csv"
 
 # Read all rows
 with open(input_file, "r", encoding="utf-8") as infile:
