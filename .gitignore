@@ -1,2 +1,3 @@
 models/trained
 *.yml
+airflow/

@@ -137,8 +137,9 @@ myanmar-sentiment-analysis/
 │
 ├── notebooks/
 │   ├── 01_data_exploration.ipynb
-│   └── 02_preprocessing.ipynb
-│   └── 03_pretokenization.ipynb
+│   ├── 02_preprocessing.ipynb
+│   ├── 03_pretokenization.ipynb
+│   └── 04_db_checking.ipynb
 │
 ├── data/
 │   ├── raw/
@@ -186,7 +187,8 @@ myanmar-sentiment-analysis/
 │
 ├── scripts/
 │   ├── load_csv_to_db.py              # labeled data import
-│   └── retrain.py                     # manual retraining trigger
+│   ├── retrain.py                     # manual retraining trigger
+│   └── download_dataset.py            # script for downloading dataset
 │
 ├── configs/
 │   └── config.yaml                    # API keys, DB config

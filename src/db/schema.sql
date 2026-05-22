@@ -1,11 +1,24 @@
 -- =====================================================
 -- REQUESTS TABLE
 -- =====================================================
+CREATE TYPE request_status AS ENUM (
+    'NEW',
+    'LOCKED',
+    'FETCHIED',
+    'PREPROCESSED',
+    'PREDICTED_MODEL',
+    'PREDICTED_AI',
+    'COMPARED',
+    'FINALIZED',
+    'RESPONDED',
+    'FAILED'
+);
+
 CREATE TABLE IF NOT EXISTS requests (
     req_id          SERIAL PRIMARY KEY,
     user_id         BIGINT NOT NULL,
     video_url       TEXT NOT NULL,
-    status          VARCHAR(20) DEFAULT 'NEW',
+    status          request_status DEFAULT 'NEW',
     created_at      TIMESTAMP DEFAULT NOW()
 );
 
