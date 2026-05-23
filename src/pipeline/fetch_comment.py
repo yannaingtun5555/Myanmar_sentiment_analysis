@@ -34,7 +34,7 @@ def extract_video_id(url):
         return query.get('v', [None])[0]
     return None
 
-def fetch_comments(video_id, api_key, max_results=100):
+def fetch_comments(video_id, api_key, max_results=500):
     youtube = build('youtube', 'v3', developerKey=api_key)
     comments = []
     next_token = None
@@ -112,11 +112,20 @@ def main():
             conn.commit()
             return
         
+        # Delete old comments for this video if they exist
+        cur.execute("""
+            DELETE FROM raw_comments 
+            WHERE video_id = %s AND req_id IN (
+                SELECT req_id FROM requests WHERE video_url = %s
+            )
+        """, (video_id, video_url))
+        
         for c in comments:
             cur.execute("""
                 INSERT INTO raw_comments (comment_id, video_id, req_id, text_display, scraped_at)
                 VALUES (%s, %s, %s, %s, NOW())
-                ON CONFLICT (comment_id) DO NOTHING
+                ON CONFLICT (comment_id) DO UPDATE
+                SET text_display = EXCLUDED.text_display, scraped_at = NOW()
             """, (c['id'], video_id, req_id, c['text']))
         
         cur.execute("UPDATE requests SET status = 'FETCHED' WHERE req_id = %s", (req_id,))

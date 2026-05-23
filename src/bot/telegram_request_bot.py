@@ -80,7 +80,7 @@ class YouTubeRequestBot:
                         SELECT req_id, status 
                         FROM requests 
                         WHERE user_id = %s AND video_url = %s 
-                        AND status IN ('NEW', 'LOCKED', 'FETCHING')
+                        AND status IN ('NEW', 'LOCKED', 'FETCHED')
                         LIMIT 1
                     """, (user_id, video_url))
                     
@@ -178,8 +178,16 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             req_id = int(context.args[0])
             data = bot.get_request_status(req_id)
             if data:
-                status_emoji = {'NEW': '🟡', 'LOCKED': '🔒', 'FETCHING': '📥', 
-                               'FETCHED': '✅', 'FAILED': '❌'}.get(data['status'], '⚪')
+                status_emoji = {
+                    'NEW': '🟡', 
+                    'LOCKED': '🔒', 
+                    'FETCHED': '✅', 
+                    'PREPROCESSED': '🔧',
+                    'PREDICTED_MODEL': '🤖',
+                    'FINALIZED': '📊',
+                    'RESPONDED': '📨',
+                    'FAILED': '❌'
+                }.get(data['status'], '⚪')
                 msg = f"{status_emoji} Request #{data['req_id']}\n"
                 msg += f"Status: {data['status']}\n"
                 msg += f"Comments: {data['comment_count']}\n"
@@ -194,8 +202,16 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if requests:
         msg = "Your requests:\n\n"
         for req in requests:
-            emoji = {'NEW': '🟡', 'LOCKED': '🔒', 'FETCHING': '📥', 
-                    'FETCHED': '✅', 'FAILED': '❌'}.get(req['status'], '⚪')
+            emoji = {
+                'NEW': '🟡', 
+                'LOCKED': '🔒', 
+                'FETCHED': '✅', 
+                'PREPROCESSED': '🔧',
+                'PREDICTED_MODEL': '🤖',
+                'FINALIZED': '📊',
+                'RESPONDED': '📨',
+                'FAILED': '❌'
+            }.get(req['status'], '⚪')
             msg += f"{emoji} #{req['req_id']} - {req['status']}\n"
             msg += f"   {req['created_at'].strftime('%Y-%m-%d %H:%M')}\n\n"
         await update.message.reply_text(msg)
@@ -254,8 +270,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if requests:
             msg = "Your requests:\n\n"
             for req in requests[:5]:
-                emoji = {'NEW': '🟡', 'LOCKED': '🔒', 'FETCHING': '📥', 
-                        'FETCHED': '✅', 'FAILED': '❌'}.get(req['status'], '⚪')
+                emoji = {
+                    'NEW': '🟡', 
+                    'LOCKED': '🔒', 
+                    'FETCHED': '✅', 
+                    'PREPROCESSED': '🔧',
+                    'PREDICTED_MODEL': '🤖',
+                    'FINALIZED': '📊',
+                    'RESPONDED': '📨',
+                    'FAILED': '❌'
+                }.get(req['status'], '⚪')
                 msg += f"{emoji} #{req['req_id']} - {req['status']}\n"
             await query.edit_message_text(msg)
         else:
@@ -264,8 +288,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         req_id = int(data.split('_')[1])
         req_data = bot.get_request_status(req_id)
         if req_data:
-            emoji = {'NEW': '🟡', 'LOCKED': '🔒', 'FETCHING': '📥', 
-                    'FETCHED': '✅', 'FAILED': '❌'}.get(req_data['status'], '⚪')
+            emoji = {
+                'NEW': '🟡', 
+                'LOCKED': '🔒', 
+                'FETCHED': '✅', 
+                'PREPROCESSED': '🔧',
+                'PREDICTED_MODEL': '🤖',
+                'FINALIZED': '📊',
+                'RESPONDED': '📨',
+                'FAILED': '❌'
+            }.get(req_data['status'], '⚪')
             msg = f"{emoji} Request #{req_data['req_id']}\n"
             msg += f"Status: {req_data['status']}\n"
             msg += f"Comments: {req_data['comment_count']}"

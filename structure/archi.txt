@@ -4,186 +4,183 @@
 
 PROJECT OVERVIEW
 ================================================================================
-An automated, containerized MLOps pipeline to ingest YouTube comments, clean and 
-normalize Myanmar text, and train/serve an XLM-RoBERTa-base sentiment classifier 
-(3-Class: Positive, Negative, Neutral).
+An automated pipeline to ingest YouTube comments, clean and normalize Myanmar text, 
+and serve an XLM-RoBERTa-base sentiment classifier (7 emotions: Anger, Fear, Joy, 
+Love, Neutral, Sadness, Surprise).
 
-Orchestration: Apache Airflow (Scheduled Batch Processing)
+Orchestration: Manual + Airflow (Scheduled Batch Processing)
 
 
 [1] SYSTEM ARCHITECTURE FLOW DIAGRAM
 ================================================================================
 
- Phase 1: Scheduled Ingestion & Processing (Airflow DAG Worker)
+ Phase 1: Scheduled Ingestion & Processing
  ──────────────────────────────────────────────────────────────────────────────
+   [ Telegram Bot ]
+             │
+             ▼ (User sends YouTube URL)
+   [ requests Table ] - status: NEW
+             │
+             ▼ (fetch_comments.py)
    [ YouTube Data API v3 ]
              │
-             ▼ (Task 1: PythonOperator - Idempotent, Incremental Ingest)
-   [ Staging Schema: Postgres Table (raw_comments) ]
+             ▼ (Save comments)
+   [ raw_comments Table ] - status: LOCKED → FETCHED
              │
-             ▼ (Task 2: PythonOperator - Zawgyi→Unicode, Clean, Tokenize)
-   [ Warehouse Schema: Postgres Table (preprocessed_comments) ]
-
- Phase 2: Orchestrated Training Loop (Airflow Host Engine)
- ──────────────────────────────────────────────────────────────────────────────
-   [ Warehouse DB Data ]
+             ▼ (preprocess.py - Zawgyi→Unicode, Clean, Tokenize)
+   [ preprocessed_comments Table ] - status: PREPROCESSED
              │
-             ▼ (Task 3: DockerOperator - Spawns Dedicated Deep Learning Container)
-   ┌────────────────────────────────────────────────────────────────────────┐
-   │                        ML-TRAIN-CONTAINER (PyTorch)                    │
-   │  • Splitting: Train/Val/Test (70% / 15% / 15%)                         │
-   │  • Model: Fine-tuning XLM-RoBERTa-base (Layer with 0.2-0.3 Dropout)     │
-   │  • Hyperparameters: LR: 2e-5 | Batch: 8 | Epochs: 3 | Max Seq Len: 128 │
-   └────────────────────────────────┬───────────────────────────────────────┘
-                                    │
-                                    ▼ 
-                       [ Model Artifacts Storage / ONNX Export ]
+             ▼ (predict_model.py - XLM-RoBERTa)
+   [ predictions Table ] - status: PREDICTED_MODEL
+             │
+             ▼ (save_results.py)
+   [ final_results Table ] - status: FINALIZED
+   [ review_queue Table ] - low confidence comments (<0.6)
 
- Phase 3: Production Serving & Client Integration
+ Phase 2: Training Loop (Future)
  ──────────────────────────────────────────────────────────────────────────────
-                            ┌────────────────────────┐
-                            │    FASTAPI BACKEND     │
-                            │  • /predict (single)   │
-                            │  • /predict_batch      │
-                            │  • /health             │
-                            └───────────┬────────────┘
-                                        │
-                         ┌──────────────┴──────────────┐
-                         ▼                             ▼
-                 [ TELEGRAM BOT ]              [ STREAMLIT DASHBOARD ]
-             User text -> Sentiment          Real-time batch analytics
+   [ labeled_dataset Table ] - Manually labeled data
+             │
+             ▼
+   [ training_dataset Table ] - Training data export
+             │
+             ▼
+   [ ML Training Container ] - PyTorch fine-tuning
+             │
+             ▼
+   [ Updated Model Artifacts ]
+
+ Phase 3: Client Integration
+ ──────────────────────────────────────────────────────────────────────────────
+   [ Telegram Bot ]
+   - /start - Welcome message
+   - /help - Help guide
+   - /status - Check request status
+   - YouTube URL - Create analysis request
 
 
-[3] DATABASE SCHEMA DESIGN (PostgreSQL)
---------------------------------------------------------------------------------
-TABLE: raw_comments
-comment_id     VARCHAR(50) PRIMARY KEY,
-video_id       VARCHAR(20),
-req_id         INT,
-text_display   TEXT,
-scraped_at     TIMESTAMP DEFAULT NOW()
+[2] DATABASE SCHEMA DESIGN (PostgreSQL)
+================================================================================
 
-TABLE: preprocessed_comments
-comment_id     VARCHAR(50) PRIMARY KEY REFERENCES raw_comments(comment_id),
-req_id         INT,
-text_unicode   TEXT,
-tokens         TEXT[],   -- tokenized / segmented text
-processed_by   VARCHAR(30),  -- base_model / manual / system
-processed_at   TIMESTAMP DEFAULT NOW()
-
-TABLE: predictions
-id              SERIAL PRIMARY KEY,
-comment_id      VARCHAR(50),
-req_id          INT,
-model_prediction VARCHAR(20),
-model_confidence FLOAT,
-ai_prediction    VARCHAR(20),
-ai_confidence    FLOAT,
-created_at       TIMESTAMP DEFAULT NOW()
-
-TABLE: comparison_results
-id              SERIAL PRIMARY KEY,
-comment_id      VARCHAR(50),
-req_id          INT,
-decision        VARCHAR(20),  
--- values: MATCH / MISMATCH / LOW_CONFIDENCE
-final_class     VARCHAR(20),  -- optional auto decision
-created_at      TIMESTAMP DEFAULT NOW()
-
-TABLE: final_results
-id              SERIAL PRIMARY KEY,
-comment_id      VARCHAR(50),
-req_id          INT,
-emotion_class   VARCHAR(20),
-source          VARCHAR(20),  -- AUTO / MODEL / AI / HYBRID
-created_at      TIMESTAMP DEFAULT NOW()
-
-TABLE: review_queue
-id              SERIAL PRIMARY KEY,
-comment_id      VARCHAR(50),
-req_id          INT,
-text            TEXT,
-model_prediction VARCHAR(20),
-ai_prediction    VARCHAR(20),
-confidence       FLOAT,
-label            VARCHAR(20), -- NULL initially
-status           VARCHAR(20) DEFAULT 'PENDING',
-created_at       TIMESTAMP DEFAULT NOW()
-
-TABLE: labeled_dataset
-id              SERIAL PRIMARY KEY,
-comment_text    TEXT,
-label           VARCHAR(20),
-source          VARCHAR(20),  -- manual / corrected / original_model
-req_id          INT,
-comment_id      VARCHAR(50),
-created_at      TIMESTAMP DEFAULT NOW()
+ENUM: request_status
+   NEW, LOCKED, FETCHED, PREPROCESSED, PREDICTED_MODEL, FINALIZED, RESPONDED, FAILED
 
 TABLE: requests
-req_id          SERIAL PRIMARY KEY,
-user_id         BIGINT,
-video_url       TEXT,
-status          VARCHAR(20), 
--- NEW / PROCESSING / DONE / ERROR
-created_at      TIMESTAMP DEFAULT NOW()
+   req_id          SERIAL PRIMARY KEY
+   user_id         BIGINT NOT NULL
+   video_url       TEXT NOT NULL
+   status          request_status DEFAULT 'NEW'
+   created_at      TIMESTAMP DEFAULT NOW()
+
+TABLE: raw_comments
+   comment_id      VARCHAR(50) PRIMARY KEY
+   video_id        VARCHAR(20)
+   req_id          INT REFERENCES requests(req_id) ON DELETE CASCADE
+   text_display    TEXT
+   scraped_at      TIMESTAMP DEFAULT NOW()
+
+TABLE: preprocessed_comments
+   comment_id      VARCHAR(50) PRIMARY KEY REFERENCES raw_comments(comment_id)
+   req_id          INT NOT NULL
+   text_unicode    TEXT
+   tokens          TEXT[]
+   processed_by    VARCHAR(30)
+   processed_at    TIMESTAMP DEFAULT NOW()
+
+TABLE: predictions
+   id               SERIAL PRIMARY KEY
+   comment_id       VARCHAR(50) REFERENCES raw_comments(comment_id)
+   req_id           INT
+   model_prediction VARCHAR(20)
+   model_confidence FLOAT
+   created_at       TIMESTAMP DEFAULT NOW()
+
+TABLE: final_results
+   id              SERIAL PRIMARY KEY
+   comment_id      VARCHAR(50) REFERENCES raw_comments(comment_id)
+   req_id          INT
+   emotion_class   VARCHAR(20)
+   source          VARCHAR(20)
+   created_at      TIMESTAMP DEFAULT NOW()
+
+TABLE: review_queue
+   id               SERIAL PRIMARY KEY
+   comment_id       VARCHAR(50) REFERENCES raw_comments(comment_id)
+   req_id           INT
+   text             TEXT
+   model_prediction VARCHAR(20)
+   confidence       FLOAT
+   label            VARCHAR(20)
+   status           VARCHAR(20) DEFAULT 'PENDING'
+   created_at       TIMESTAMP DEFAULT NOW()
+
+TABLE: labeled_dataset
+   id              SERIAL PRIMARY KEY
+   comment_id      VARCHAR(50) REFERENCES raw_comments(comment_id)
+   req_id          INT
+   comment_text    TEXT
+   label           VARCHAR(20)
+   labeled_by      VARCHAR(50)
+   labeled_at      TIMESTAMP DEFAULT NOW()
+
+TABLE: training_dataset
+   id              SERIAL PRIMARY KEY
+   comment_text    TEXT NOT NULL
+   label           VARCHAR(20) NOT NULL
+   source          VARCHAR(20)
+   source_id       INT
+   confidence      FLOAT
+   created_at      TIMESTAMP DEFAULT NOW()
 
 
-[4] PROJECT FOLDER STRUCTURE
---------------------------------------------------------------------------------
-myanmar-sentiment-analysis/
+[3] PROJECT FOLDER STRUCTURE
+================================================================================
+myanmar_sentiment/
 │
 ├── dags/
 │   └── youtube_pipeline.py              # Airflow DAG
 │
-├── notebooks/
+├──  notebooks/
 │   ├── 01_data_exploration.ipynb
 │   ├── 02_preprocessing.ipynb
 │   ├── 03_pretokenization.ipynb
 │   └── 04_db_checking.ipynb
 │
-├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── cleaned/
+├──  data/
+│   ├── annotated
+│   │   └─  dataset_annotate.csv
+│   ├── cleaned
+│   ├── preprocessed
+│   └── raw
 │
-├── models/                                    # NEW - Model storage
-│   ├── trained/                              # Trained models
-│   │   ├── xlm-roberta-base-emotion/        # Your trained model
-│   │   │   ├── config.json
-│   │   │   ├── model.safetensors
-│   │   │   ├── tokenizer.json
-│   │   │   ├── tokenizer_config.json
-│   │   │   ├── sentencepiece.bpe.model
-│   │   │   └── label_mapping.json
-│   │   └── model_metadata.json     
-│   └── metadata.json                    # version tracking
+├── models/
+│   └── trained/
+│       └── xlm-roberta-improve-final-75/
+│           ├── config.json
+│           ├── model.safetensors
+│           ├── tokenizer.json
+│           ├── tokenizer_config.json
+│           └── label_mapping.json
 │
 ├── src/
 │   ├── db/
 │   │   ├── connection.py               # DB connection (MySQL)
 │   │   └── schema.sql                  # DB schema
-│   |
+│   │
 │   ├── pipeline/
-│   │   ├── fetch_comments.py          # YouTube fetch
-│   │   ├── preprocess.py              # cleaning + tokenizing
-│   │   ├── predict_model.py           # model inference
-│   │   ├── predict_ai.py              # external AI API
-│   │   ├── compare.py                 # compare logic
-│   │   ├── save_results.py            # DB writes
-│   │   └── export_csv.py              # review queue
-│   |
+│   │   ├── fetch_comments.py
+│   │   ├── preprocess.py
+│   │   ├── predict_model.py
+│   │   ├── save_results.py
+│   │   └── load_csv.py
+│   │
 |   ├── models/
 │   │   ├── train_base.py              # PyTorch/Hugging Face training logic
 │   │   ├── train_database.py          # training logic to comment db
 │   │   └── predict.py                 # Inference wrapper
-|   |
-│   ├── training/
-│   │   ├── train_base.py
-│   │   └── train_from_db.py
-│   |
+│   │        
 │   └── bot/
-│       ├── telegram_request_bot.py
-|       └── telegram_response_bot.py
+│       └── telegram_request_bot.py
 │
 ├── scripts/
 │   ├── load_csv_to_db.py              # labeled data import
@@ -191,24 +188,41 @@ myanmar-sentiment-analysis/
 │   └── download_dataset.py            # script for downloading dataset
 │
 ├── configs/
-│   └── config.yaml                    # API keys, DB config
+│   └── config.yml
 │
 ├── requirements.txt
 └── README.md
 
-
-[5] SYSTEM DEPENDENCIES (requirements.txt)
---------------------------------------------------------------------------------
+[4] SYSTEM DEPENDENCIES (requirements.txt)
+================================================================================
+psycopg2-binary>=2.9.0
+pyyaml>=6.0
+google-api-python-client>=2.0.0
 transformers==4.36.0
 torch==2.1.0
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+accelerate>=0.25.0
+sentencepiece>=0.1.99
+SimboloSiamese>=0.2.8
+pandas>=2.1.3
+numpy>=1.24.3
 python-telegram-bot==20.7
-aiohttp==3.9.0
-pandas==2.1.3
-numpy==1.24.3
-scikit-learn==1.3.2
-datasets==2.15.0
-accelerate==0.25.0
-SimboloSiamese==0.2.7
-apache-airflow-providers-docker==3.8.0
+apache-airflow>=2.8.0
+apache-airflow-providers-docker>=3.8.0
+
+
+[5] PIPELINE STATUS
+================================================================================
+✅ fetch_comments.py - YouTube API → raw_comments (status: FETCHED)
+✅ preprocess.py - Zawgyi→Unicode, clean, tokenize → preprocessed_comments
+✅ predict_model.py - XLM-RoBERTa inference → predictions (7 emotions)
+✅ save_results.py - Low confidence → review_queue, others → final_results
+✅ Telegram Bot - Receives URLs, creates requests
+✅ Database Schema - 8 tables, 8 status enums
+
+[6] NEXT STEPS
+================================================================================
+1. Airflow DAG integration
+2. Manual labeling interface for review_queue
+3. Training pipeline from labeled_dataset
+4. FastAPI backend for real-time predictions
+5. Streamlit dashboard for analytics

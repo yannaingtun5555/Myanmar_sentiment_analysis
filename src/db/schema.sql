@@ -4,11 +4,9 @@
 CREATE TYPE request_status AS ENUM (
     'NEW',
     'LOCKED',
-    'FETCHIED',
+    'FETCHED',
     'PREPROCESSED',
     'PREDICTED_MODEL',
-    'PREDICTED_AI',
-    'COMPARED',
     'FINALIZED',
     'RESPONDED',
     'FAILED'
@@ -63,31 +61,13 @@ CREATE TABLE IF NOT EXISTS predictions (
     req_id           INT,
     model_prediction VARCHAR(20),
     model_confidence FLOAT,
-    ai_prediction    VARCHAR(20),
-    ai_confidence    FLOAT,
     created_at       TIMESTAMP DEFAULT NOW(),
     FOREIGN KEY (comment_id) REFERENCES raw_comments(comment_id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_predictions_comment_id ON predictions(comment_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_req_id ON predictions(req_id);
-CREATE INDEX IF NOT EXISTS idx_predictions_model_ai ON predictions(model_prediction, ai_prediction);
-
--- =====================================================
--- COMPARISON_RESULTS TABLE
--- =====================================================
-CREATE TABLE IF NOT EXISTS comparison_results (
-    id               SERIAL PRIMARY KEY,
-    comment_id       VARCHAR(50),
-    req_id           INT,
-    decision         VARCHAR(20),
-    final_class      VARCHAR(20),
-    created_at       TIMESTAMP DEFAULT NOW(),
-    FOREIGN KEY (comment_id) REFERENCES raw_comments(comment_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_comparison_decision ON comparison_results(decision);
-CREATE INDEX IF NOT EXISTS idx_comparison_req_id ON comparison_results(req_id);
+CREATE INDEX IF NOT EXISTS idx_predictions_model ON predictions(model_prediction);
 
 -- =====================================================
 -- FINAL_RESULTS TABLE
@@ -114,9 +94,7 @@ CREATE TABLE IF NOT EXISTS review_queue (
     req_id           INT,
     text             TEXT,
     model_prediction VARCHAR(20),
-    ai_prediction    VARCHAR(20),
     confidence       FLOAT,
-    label            VARCHAR(20),
     status           VARCHAR(20) DEFAULT 'PENDING',
     created_at       TIMESTAMP DEFAULT NOW(),
     FOREIGN KEY (comment_id) REFERENCES raw_comments(comment_id) ON DELETE SET NULL
@@ -130,21 +108,37 @@ CREATE INDEX IF NOT EXISTS idx_review_queue_confidence ON review_queue(confidenc
 -- =====================================================
 CREATE TABLE IF NOT EXISTS labeled_dataset (
     id              SERIAL PRIMARY KEY,
+    comment_id      VARCHAR(50),
+    req_id          INT,
     comment_text    TEXT,
     label           VARCHAR(20),
-    source          VARCHAR(20),
-    req_id          INT,
-    comment_id      VARCHAR(50),
-    created_at      TIMESTAMP DEFAULT NOW(),
+    predicited      VARCHAR(20),
+    labeled_by      VARCHAR(50),
+    labeled_at      TIMESTAMP DEFAULT NOW(),
     FOREIGN KEY (comment_id) REFERENCES raw_comments(comment_id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_labeled_dataset_label ON labeled_dataset(label);
-CREATE INDEX IF NOT EXISTS idx_labeled_dataset_source ON labeled_dataset(source);
-CREATE INDEX IF NOT EXISTS idx_labeled_dataset_created ON labeled_dataset(created_at);
+CREATE INDEX IF NOT EXISTS idx_labeled_dataset_comment_id ON labeled_dataset(comment_id);
 
 -- =====================================================
--- VIEWS
+-- TRAINING_DATASET TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS training_dataset (
+    id              SERIAL PRIMARY KEY,
+    comment_text    TEXT NOT NULL,
+    label           VARCHAR(20) NOT NULL,
+    source          VARCHAR(20),
+    source_id       INT,
+    confidence      FLOAT,
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_dataset_label ON training_dataset(label);
+CREATE INDEX IF NOT EXISTS idx_training_dataset_source ON training_dataset(source);
+
+-- =====================================================
+-- VIEW: Pending Reviews
 -- =====================================================
 CREATE OR REPLACE VIEW v_pending_reviews AS
 SELECT 
@@ -153,7 +147,6 @@ SELECT
     rq.req_id,
     rq.text,
     rq.model_prediction,
-    rq.ai_prediction,
     rq.confidence,
     rc.video_id,
     req.user_id,
@@ -165,30 +158,16 @@ LEFT JOIN requests req ON rq.req_id = req.req_id
 WHERE rq.status = 'PENDING'
 ORDER BY rq.created_at;
 
-CREATE OR REPLACE VIEW v_disagreements AS
-SELECT 
-    p.comment_id,
-    p.model_prediction,
-    p.model_confidence,
-    p.ai_prediction,
-    p.ai_confidence,
-    cr.decision,
-    cr.final_class,
-    rc.text_display,
-    req.user_id
-FROM predictions p
-LEFT JOIN comparison_results cr ON p.comment_id = cr.comment_id
-LEFT JOIN raw_comments rc ON p.comment_id = rc.comment_id
-LEFT JOIN requests req ON p.req_id = req.req_id
-WHERE cr.decision IN ('MISMATCH', 'LOW_CONFIDENCE')
-ORDER BY cr.created_at DESC;
-
+-- =====================================================
+-- VIEW: Training Data Export
+-- =====================================================
 CREATE OR REPLACE VIEW v_training_data_export AS
 SELECT 
     comment_text,
     label,
     source,
+    confidence,
     created_at
-FROM labeled_dataset
+FROM training_dataset
 WHERE label IS NOT NULL
 ORDER BY created_at DESC;
