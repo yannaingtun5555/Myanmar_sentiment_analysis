@@ -25,7 +25,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 model.eval()
 
-label_map = {0: 'Anger', 1: 'Fear', 2: 'Joy', 3: 'Love', 4: 'Neutral', 5: 'Sadness', 6: 'Surprise'}
+label_map = {0: 'Anger', 1: 'Fear', 2: 'Joy', 3: 'postitive', 4: 'Neutral', 5: 'Sadness', 6: 'Surprise'}
 
 def predict_sentiment(text):
     inputs = tokenizer(text, return_tensors='pt', truncation=True, max_length=128, padding=True)
@@ -43,7 +43,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🇲🇲 Myanmar Sentiment Bot\n\n"
         "Send me any text in Myanmar (Burmese) and I'll detect the emotion.\n\n"
-        "Emotions: Anger, Fear, Joy, Love, Neutral, Sadness, Surprise"
+        "Emotions: Anger, Fear, Joy, postitive, Neutral, Sadness, Surprise"
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -21,7 +21,7 @@ class AccuracyTester:
         # Get labels from model config
         self.id2label = self.model.config.id2label
         if self.id2label is None:
-            self.id2label = {0: "Anger", 1: "Fear", 2: "Joy", 3: "Love", 4: "Neutral", 5: "Sadness", 6: "Surprise"}
+            self.id2label = {0: "Anger", 1: "Fear", 2: "Joy", 3: "postitive", 4: "Neutral", 5: "Sadness", 6: "Surprise"}
         
         self.label2id = {v: k for k, v in self.id2label.items()}
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

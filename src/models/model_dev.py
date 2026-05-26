@@ -84,7 +84,7 @@ df_original['emotion_class'] = df_original['emotion_class'].str.capitalize()
 df_original['emotion_class'] = df_original['emotion_class'].replace('Suprise', 'Surprise')
 
 # Remove any rows with NaN or invalid labels
-df_original = df_original[df_original['emotion_class'].isin(['Anger', 'Fear', 'Joy', 'Love', 'Neutral', 'Sadness', 'Surprise'])]
+df_original = df_original[df_original['emotion_class'].isin(['Anger', 'Fear', 'Joy', 'postitive', 'Neutral', 'Sadness', 'Surprise'])]
 
 # Sample from original
 original_sample = df_original.sample(n=200, random_state=42)
@@ -197,7 +197,7 @@ test_texts = [
     ("ဒီ နေ့ ရာသီ ဥတု က သာ မာန် ပဲ", "Neutral"),
     ("ငါ အ ရမ်း ဒေါသ ထွက် တယ်", "Anger"),
     ("အံ့သြ စရာ ပဲ", "Surprise"),
-    ("ငါ မင်း ကို ချစ် တယ်", "Love"),
+    ("ငါ မင်း ကို ချစ် တယ်", "postitive"),
 ]
 
 model.eval()

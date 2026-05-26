@@ -56,7 +56,7 @@ def predict(text, tokenizer, model, device):
         pred_id = torch.argmax(probs, dim=1).item()
         confidence = probs[0][pred_id].item()
     
-    label_map = {0: 'Anger', 1: 'Fear', 2: 'Joy', 3: 'Love', 4: 'Neutral', 5: 'Sadness', 6: 'Surprise'}
+    label_map = {0: 'Anger', 1: 'Fear', 2: 'Joy', 3: 'postitive', 4: 'Neutral', 5: 'Sadness', 6: 'Surprise'}
     return label_map[pred_id], confidence
 
 def main():

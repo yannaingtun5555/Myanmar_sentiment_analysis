@@ -6,7 +6,7 @@ PROJECT OVERVIEW
 ================================================================================
 An automated pipeline to ingest YouTube comments, clean and normalize Myanmar text, 
 and serve an XLM-RoBERTa-base sentiment classifier (7 emotions: Anger, Fear, Joy, 
-Love, Neutral, Sadness, Surprise).
+postitive, Neutral, Sadness, Surprise).
 
 Orchestration: Manual + Airflow (Scheduled Batch Processing)
 

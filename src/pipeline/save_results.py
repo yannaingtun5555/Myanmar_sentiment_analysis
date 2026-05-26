@@ -113,7 +113,7 @@ def main():
     # Emotion emoji mapping
     emoji_map = {
         'anger': '😠', 'fear': '😨', 'joy': '😊',
-        'love': '❤️', 'neutral': '😐', 'sadness': '😢', 'surprise': '😲'
+        'postitive': '❤️', 'neutral': '😐', 'sadness': '😢', 'surprise': '😲'
     }
     
     try:

@@ -15,7 +15,7 @@ Emotion classes:
 - `Anger`
 - `Fear`
 - `Joy`
-- `Love`
+- `postitive`
 - `Neutral`
 - `Sadness`
 - `Surprise`

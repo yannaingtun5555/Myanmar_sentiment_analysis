@@ -1,3 +1,8 @@
-models/trained
+models/7_class
+models/5_class
 *.yml
 airflow/
+data/raw/
+data/processed/
+data/cleaned/
+data/accuracy_test/

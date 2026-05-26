@@ -46,7 +46,7 @@ class MyanmarEmotionClassifier:
             ],
             "Joy": ["ပျော်", "ရွှင်", "ပျော်ရွှင်", "ဝမ်းသာ", "ကျေနပ်"],
             "Fear": ["ကြောက်", "စိုးရိမ်", "လန့်", "ထိတ်", "ပူ", "စိုး"],
-            "Love": ["ချစ်", "မြတ်နိုး", "တွယ်", "ကြိုက်"],
+            "postitive": ["ချစ်", "မြတ်နိုး", "တွယ်", "ကြိုက်"],
             "Sadness": ["ဝမ်းနည်း", "ငို", "ညစ်", "ကြေကွဲ"]
         }
         
@@ -122,7 +122,7 @@ class MyanmarEmotionClassifier:
         
         test_examples = [
             ("ပန်း ခြံ ထဲ မှာ လှ ပ တဲ့ နေ့ လေး", "Joy"),
-            ("ငါ မင်း ကို ချစ် တယ်", "Love"),
+            ("ငါ မင်း ကို ချစ် တယ်", "postitive"),
             ("ငါ အ ရမ်း ကြောက် နေ တယ်", "Fear"),
             ("ငါ အ ရမ်း စိတ်ဆိုး ဒေါသ ထွက် တယ်", "Anger"),
             ("ဒီ မ နက် လမ်း အ ရမ်း ပိတ် တယ် စိတ်ညစ် တယ်", "Anger"),
@@ -161,7 +161,7 @@ class MyanmarEmotionClassifier:
             else:
                 status = "✅" if is_correct else "❌"
             
-            emoji_map = {"Joy": "😊", "Love": "❤️", "Fear": "😨", "Anger": "😠", "Sadness": "😢", "Neutral": "😐", "Surprise": "😲"}
+            emoji_map = {"Joy": "😊", "postitive": "❤️", "Fear": "😨", "Anger": "😠", "Sadness": "😢", "Neutral": "😐", "Surprise": "😲"}
             
             print(f"\n{status}")
             print(f"   Text: {text[:40]}...")
