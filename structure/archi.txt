@@ -138,6 +138,7 @@ TABLE: training_dataset
 myanmar_sentiment/
 │
 ├── dags/
+│   ├── dataset_pipeline.py              # Airflow DAG for training dataset
 │   └── youtube_pipeline.py              # Airflow DAG
 │
 ├──  notebooks/
@@ -147,8 +148,7 @@ myanmar_sentiment/
 │   └── 04_db_checking.ipynb
 │
 ├──  data/
-│   ├── annotated
-│   │   └─  dataset_annotate.csv
+│   ├── accuracy_test
 │   ├── cleaned
 │   ├── preprocessed
 │   └── raw
@@ -165,6 +165,7 @@ myanmar_sentiment/
 ├── src/
 │   ├── db/
 │   │   ├── connection.py               # DB connection (MySQL)
+│   │   ├── test.py                     # DB connection test(MySQL)
 │   │   └── schema.sql                  # DB schema
 │   │
 │   ├── pipeline/
@@ -172,11 +173,13 @@ myanmar_sentiment/
 │   │   ├── preprocess.py
 │   │   ├── predict_model.py
 │   │   ├── save_results.py
+│   │   ├── load_dataset.py
 │   │   └── load_csv.py
 │   │
 |   ├── models/
 │   │   ├── train_base.py              # PyTorch/Hugging Face training logic
-│   │   ├── train_database.py          # training logic to comment db
+│   │   ├── accuracy_test.py           #script for accuracy testing
+│   │   ├── model_dev.py               # script for refining the model
 │   │   └── predict.py                 # Inference wrapper
 │   │        
 │   └── bot/
@@ -184,7 +187,6 @@ myanmar_sentiment/
 │
 ├── scripts/
 │   ├── load_csv_to_db.py              # labeled data import
-│   ├── retrain.py                     # manual retraining trigger
 │   └── download_dataset.py            # script for downloading dataset
 │
 ├── configs/
@@ -192,6 +194,7 @@ myanmar_sentiment/
 │
 ├── requirements.txt
 └── README.md
+    
 
 [4] SYSTEM DEPENDENCIES (requirements.txt)
 ================================================================================

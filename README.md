@@ -1,89 +1,114 @@
-# Myanmar YouTube Sentiment Analysis
+# Myanmar Sentiment Analysis
 
-Production-style pipeline for **Myanmar-language YouTube comment sentiment analysis** using **XLM-RoBERTa** with Telegram request handling and PostgreSQL-backed processing.
+Production-style Myanmar text sentiment system with Telegram intake, pipeline processing, model inference, and PostgreSQL storage.
 
-## Overview
+## Pipeline
 
-This project:
-- accepts YouTube links from a Telegram bot,
-- fetches comments via YouTube Data API,
-- normalizes Myanmar text (including Zawgyi -> Unicode),
-- predicts one of 7 emotion classes,
-- saves final results and low-confidence cases for human review.
+### Pipeline 1: `tg bot -> pipeline -> model -> tg bot`
 
-Emotion classes:
-- `Anger`
-- `Fear`
-- `Joy`
-- `postitive`
-- `Neutral`
-- `Sadness`
-- `Surprise`
+1. User sends a YouTube URL to Telegram bot.
+2. Bot creates a row in `requests` with status `NEW`.
+3. `fetch_comment.py` downloads comments from YouTube API and stores to `raw_comments`.
+4. `preprocess.py` normalizes text (Zawgyi -> Unicode, cleaning, token preparation) and stores to `preprocessed_comments`.
+5. `predict_model.py` loads sentiment model and writes predictions to `predictions`.
+6. `save_results.py` finalizes outputs in `final_results`.
+7. Bot reads result status and returns response to the user.
 
-Final selected model performance:
-- **Weighted F1: 0.75**
+### Pipeline 2: `tg bot -> pipeline -> database`
 
-## Architecture
+1. User sends a YouTube URL to Telegram bot.
+2. Bot writes request metadata into `requests`.
+3. Pipeline stages update DB tables in sequence:
+   - `raw_comments` (`LOCKED`/`FETCHED`)
+   - `preprocessed_comments` (`PREPROCESSED`)
+   - `predictions` (`PREDICTED_MODEL`)
+   - `final_results` (`FINALIZED`)
+4. Low-confidence items are stored in `review_queue` for manual review.
 
-Source: `structure/archi.txt`
+## Model
 
-### End-to-end flow
+- Hugging Face model: [Yanddddd/Myanmar_sentiment_model](https://huggingface.co/Yanddddd/Myanmar_sentiment_model)
+- Local model paths used in this repo:
+  - `models/3_class/myanmar_sentiment_final`
+  - `models/7_class/xlm-roberta-improve-final-75`
+- Inference script: `src/pipeline/predict_model.py`
 
-1. User sends YouTube URL to Telegram bot.
-2. Request is inserted into `requests` (`NEW`).
-3. `fetch_comment.py` gets comments from YouTube API and stores in `raw_comments`.
-4. `preprocess.py` converts/cleans/tokenizes text into `preprocessed_comments`.
-5. `predict_model.py` loads model and writes predictions to `predictions`.
-6. `save_results.py`:
-- writes normal-confidence outputs to `final_results`,
-- writes low-confidence outputs to `review_queue`,
-- sends Telegram completion notification.
+### Benchmark (from `Banchmarks/model_result.txt`)
 
-### Request status lifecycle
+- Test file: `test1_pro.csv`
+- Samples: `597`
+- Accuracy: `0.863`
+- Weighted F1-score: `0.862`
 
-`NEW -> LOCKED -> FETCHED -> PREPROCESSED -> PREDICTED_MODEL -> FINALIZED -> RESPONDED`
+Per-class report (3-class run):
+- negative: precision `0.92`, recall `0.89`, f1 `0.90`
+- neutral: precision `0.78`, recall `0.95`, f1 `0.86`
+- positive: precision `0.93`, recall `0.75`, f1 `0.83`
 
-## Project Structure
+## Config Structure
 
-```text
-myanmar_sentiment/
-├── configs/
-│   └── config.yml
-├── data/
-│   ├── raw/
-│   ├── cleaned/
-│   ├── processed/
-│   └── annotated/
-├── models/
-│   └── trained/
-│       └── xlm-roberta-improve-final-75/
-├── notebooks/
-├── scripts/
-│   ├── load_csv_to_db.py
-│   └── download_datasets.py
-├── src/
-│   ├── bot/
-│   │   └── telegram_request_bot.py
-│   ├── db/
-│   │   ├── connection.py
-│   │   └── schema.sql
-│   ├── models/
-│   │   ├── train_base.py
-│   │   ├── model_dev.py
-│   │   ├── model_loader.py
-│   │   └── predict.py
-│   └── pipeline/
-│       ├── fetch_comment.py
-│       ├── preprocess.py
-│       ├── predict_model.py
-│       ├── save_results.py
-│       └── load_csv.py
-└── test_model.py
+File: `configs/config.yml`
+
+```yaml
+database:
+  db_type: postgresql
+  host: localhost
+  port: 5432
+  user: postgres
+  password: <DB_PASSWORD>
+  database: youtube_analysis
+
+telegram:
+  bot_token: <TELEGRAM_BOT_TOKEN>
+  bot_token_response: <TELEGRAM_RESPONSE_BOT_TOKEN>
+  allowed_users: []
+
+youtube:
+  api_key: <YOUTUBE_API_KEY>
+  max_comments_per_video: 500
+
+api_keys:
+  openai_api_key: <OPENAI_API_KEY>
+  huggingface_token: <HF_TOKEN>
+
+pipeline:
+  batch_size: 100
+  max_comments_per_video: 1000
+  confidence_threshold: 0.7
+  model_path: models/3_class/myanmar_sentiment_final
 ```
 
-## Database Design
+## Necessaries
 
-Main tables:
+1. Python `3.10+`
+2. PostgreSQL running and reachable from config.
+3. Telegram bot token(s).
+4. YouTube Data API v3 key.
+5. Model files present locally under configured `pipeline.model_path` (or download from Hugging Face).
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Run (Typical Order)
+
+```bash
+python src/pipeline/fetch_comment.py
+python src/pipeline/preprocess.py
+python src/pipeline/predict_model.py
+python src/pipeline/save_results.py
+```
+
+Telegram bot:
+
+```bash
+python src/bot/telegram_request_bot.py
+```
+
+## Main Tables
+
 - `requests`
 - `raw_comments`
 - `preprocessed_comments`
@@ -93,121 +118,8 @@ Main tables:
 - `labeled_dataset`
 - `training_dataset`
 
-Schema file: `src/db/schema.sql`
-
-## Setup
-
-### 1. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Configure project
-
-Edit:
-
-```bash
-configs/config.yml
-```
-
-Required sections:
-- `database`
-- `telegram.bot_token`
-- `telegram.bot_token_response`
-- `youtube.api_key`
-- `pipeline.model_path`
-
-Example `configs/config.yml` structure:
-
-```yaml
-database:
-  db_type: postgresql
-  host: localhost
-  port: 5432
-  user: your_db_user
-  password: your_db_password
-  database: youtube_analysis
-
-telegram:
-  bot_token: "YOUR_TELEGRAM_REQUEST_BOT_TOKEN"
-  bot_token_response: "YOUR_TELEGRAM_RESPONSE_BOT_TOKEN"
-  allowed_users: []
-
-youtube:
-  api_key: "YOUR_YOUTUBE_DATA_API_KEY"
-  max_comments_per_video: 500
-
-api_keys:
-  openai_api_key: "YOUR_OPENAI_API_KEY"
-  huggingface_token: "YOUR_HUGGINGFACE_TOKEN"
-
-pipeline:
-  batch_size: 100
-  max_comments_per_video: 1000
-  confidence_threshold: 0.7
-  model_path: "models/trained/xlm-roberta-improve-final-75"
-```
-
-If `configs/config.yml` is gitignored, create it locally with the template above.
-
-### 3. Initialize database
-
-Run your schema SQL in PostgreSQL:
-
-```bash
-psql -U <user> -d <db_name> -f src/db/schema.sql
-```
-
-## Running the System
-
-### Start Telegram request bot
-
-```bash
-python src/bot/telegram_request_bot.py
-```
-
-### Run batch pipeline manually
-
-```bash
-python src/pipeline/fetch_comment.py
-python src/pipeline/preprocess.py
-python src/pipeline/predict_model.py
-python src/pipeline/save_results.py
-```
-
-## Model Development (5 Training Rounds)
-
-The final model (`xlm-roberta-improve-final-75`) is the result of **5 iterative training rounds**.
-
-### Round 1
-- Baseline fine-tuning with standard train/validation split.
-
-### Round 2
-- Label cleanup and normalization (e.g., spelling/format fixes).
-
-### Round 3
-- Class imbalance handling with weighted loss.
-
-### Round 4
-- Data expansion/combination with additional cleaned samples.
-
-### Round 5 (Final)
-- Hyperparameter and data refinements consolidated into final run.
-- Selected production artifact: `models/trained/xlm-roberta-improve-final-75`
-- **Final weighted F1 = 0.75**
-
-## Inference Model Path
-
-Configured at:
-
-```yaml
-pipeline:
-  model_path: models/trained/xlm-roberta-improve-final-75
-```
-
 ## Notes
 
-- Low-confidence predictions (`< 0.6`) are sent to `review_queue` for human labeling.
-- After finalization, users receive Telegram notifications with emotion summary.
-- Current `config.yml` contains live-looking tokens/keys; rotate and move secrets to environment variables for safety.
+- `predict_model.py` currently predicts records not yet present in `predictions`.
+- Label mapping is loaded from `metadata.json` / `label_mapping.json` when available.
+- For security, do not commit real API tokens in `configs/config.yml`.

@@ -1,5 +1,0 @@
-# See saved comments
-sudo -u postgres psql -d youtube_analysis -c "SELECT comment_id, text_display FROM raw_comments WHERE req_id = 1 LIMIT 3;"
-
-# Check request status
-sudo -u postgres psql -d youtube_analysis -c "SELECT req_id, status FROM requests WHERE req_id = 1;"
