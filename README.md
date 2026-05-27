@@ -24,6 +24,68 @@ Production-style Myanmar text sentiment system with Telegram intake, pipeline pr
    - `predictions` (`PREDICTED_MODEL`)
    - `final_results` (`FINALIZED`)
 4. Low-confidence items are stored in `review_queue` for manual review.
+5. Project Folder Structure
+myanmar_sentiment/
+│
+├── dags/
+│   ├── dataset_pipeline.py              # Airflow DAG for training dataset
+│   └── youtube_pipeline.py              # Airflow DAG
+│
+├──  notebooks/
+│   ├── 01_data_exploration.ipynb
+│   ├── 02_preprocessing.ipynb
+│   ├── 03_pretokenization.ipynb
+│   └── 04_db_checking.ipynb
+│
+├──  data/
+│   ├── accuracy_test
+│   ├── cleaned
+│   ├── preprocessed
+│   └── raw
+│
+├── models/
+│   └── trained/
+│       └── xlm-roberta-improve-final-75/
+│           ├── config.json
+│           ├── model.safetensors
+│           ├── tokenizer.json
+│           ├── tokenizer_config.json
+│           └── label_mapping.json
+│
+├── src/
+│   ├── db/
+│   │   ├── connection.py               # DB connection (MySQL)
+│   │   ├── test.py                     # DB connection test(MySQL)
+│   │   └── schema.sql                  # DB schema
+│   │
+│   ├── pipeline/
+│   │   ├── fetch_comments.py
+│   │   ├── preprocess.py
+│   │   ├── predict_model.py
+│   │   ├── save_results.py
+│   │   ├── load_dataset.py
+│   │   └── load_csv.py
+│   │
+|   ├── models/
+│   │   ├── train_base.py              # PyTorch/Hugging Face training logic
+│   │   ├── accuracy_test.py           #script for accuracy testing
+│   │   ├── model_dev.py               # script for refining the model
+│   │   └── predict.py                 # Inference wrapper
+│   │        
+│   └── bot/
+│       └── telegram_request_bot.py
+│
+├── scripts/
+│   ├── load_csv_to_db.py              # labeled data import
+│   └── download_dataset.py            # script for downloading dataset
+│
+├── configs/
+│   └── config.yml
+│
+├── requirements.txt
+└── README.md
+    
+
 
 ## Model
 
