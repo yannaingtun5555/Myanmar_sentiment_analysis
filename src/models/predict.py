@@ -1,15 +1,19 @@
 import os
 import json
 import torch
-import re
+import pandas as pd
+import numpy as np
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 from typing import Dict, List, Tuple
 
 class MyanmarEmotionClassifier:
-    """Myanmar Emotion Classification Model with Rule-Based Corrections"""
+    """Myanmar Sentiment Classification Model for 3 Classes"""
     
-    def __init__(self, model_path: str = "../../models/trained/xlm-roberta-base-emotion", 
-                 confidence_threshold: float = 0.6):
+    def __init__(self, model_path: str = "./myanmar_sentiment_model_refined", 
+                 confidence_threshold: float = 0.5):
         
         print(f"Loading model from {model_path}...")
         
@@ -23,71 +27,26 @@ class MyanmarEmotionClassifier:
         self.model.to(self.device)
         self.model.eval()
         
-        with open(os.path.join(model_path, "label_mapping.json"), "r") as f:
-            mapping = json.load(f)
-            self.id2label = {int(k): v for k, v in mapping["id2label"].items()}
-            self.label2id = mapping["label2id"]
+        # Load metadata
+        if os.path.exists(os.path.join(model_path, "metadata.json")):
+            with open(os.path.join(model_path, "metadata.json"), "r") as f:
+                metadata = json.load(f)
+                self.id2label = {int(k): v for k, v in metadata["id2label"].items()}
+                self.label2id = metadata["label2id"]
+        else:
+            # Default for 3 classes
+            self.id2label = {0: "positive", 1: "negative", 2: "neutral"}
+            self.label2id = {"positive": 0, "negative": 1, "neutral": 2}
         
         self.confidence_threshold = confidence_threshold
         
-        # Rule-based keyword mapping
-        self.keyword_rules = {
-            "Anger": [
-                "စိတ်ဆိုး", "ဒေါသ", "စိတ်တို", "မကျေနပ်", "မုန်း", 
-                "ဒေါသထွက်", "အမျက်", "စိတ်ညစ်", "ခါး", "ပူ"
-            ],
-            "Surprise": [
-                "အံ့သြ", "မထင်မှတ်", "ရှော့တိုက်", "အံ့အားသင့်", 
-                "မျှော်လင့်", "တုန်လှုပ်"
-            ],
-            "Neutral": [
-                "သာမန်", "ပုံမှန်", "ရုံ", "လောက်", "သဘော", 
-                "သာမာန်", "သာသာ", "ဖြစ်တယ်"
-            ],
-            "Joy": ["ပျော်", "ရွှင်", "ပျော်ရွှင်", "ဝမ်းသာ", "ကျေနပ်"],
-            "Fear": ["ကြောက်", "စိုးရိမ်", "လန့်", "ထိတ်", "ပူ", "စိုး"],
-            "postitive": ["ချစ်", "မြတ်နိုး", "တွယ်", "ကြိုက်"],
-            "Sadness": ["ဝမ်းနည်း", "ငို", "ညစ်", "ကြေကွဲ"]
-        }
-        
-        print(f"✅ Model loaded with rule-based corrections")
-        print(f"🏷️  Emotions: {list(self.id2label.values())}")
+        print(f"✅ Model loaded successfully")
+        print(f"🏷️  Classes: {list(self.id2label.values())}")
+        print(f"💻 Device: {self.device}")
     
-    def apply_rule_correction(self, text: str, predicted_emotion: str, confidence: float) -> Tuple[str, float]:
-        """Apply rule-based corrections based on keywords"""
+    def predict(self, text: str) -> Tuple[str, float, Dict]:
+        """Predict sentiment for single text"""
         
-        # Check for keywords indicating different emotion
-        for emotion, keywords in self.keyword_rules.items():
-            for keyword in keywords:
-                if keyword in text:
-                    # If we find anger keyword but model predicted sadness
-                    if emotion == "Anger" and predicted_emotion == "Sadness":
-                        return "Anger", min(confidence + 0.2, 0.95)
-                    # If we find surprise keyword but model predicted fear/sadness
-                    elif emotion == "Surprise" and predicted_emotion in ["Fear", "Sadness"]:
-                        return "Surprise", min(confidence + 0.15, 0.90)
-                    # If we find neutral keyword but model predicted sadness
-                    elif emotion == "Neutral" and predicted_emotion == "Sadness":
-                        if confidence < 0.8:  # Only override if not very confident
-                            return "Neutral", confidence - 0.1
-        
-        # Specific corrections for common phrases
-        if "စိတ်ဆိုး" in text or "ဒေါသ" in text:
-            return "Anger", max(confidence, 0.75)
-        
-        if "အံ့သြ" in text:
-            return "Surprise", max(confidence, 0.80)
-        
-        if "သာမန်" in text or "ပုံမှန်" in text:
-            if confidence < 0.7:
-                return "Neutral", 0.65
-        
-        return predicted_emotion, confidence
-    
-    def predict(self, text: str) -> Tuple[str, float]:
-        """Predict emotion with rule-based corrections"""
-        
-        # Get model prediction
         inputs = self.tokenizer(
             text, 
             return_tensors="pt", 
@@ -103,88 +62,207 @@ class MyanmarEmotionClassifier:
             probs = torch.softmax(outputs.logits, dim=-1)
             predicted_class = torch.argmax(probs, dim=1).item()
             confidence = torch.max(probs).item()
+            all_probs = probs[0].cpu().numpy()
             
-            predicted_emotion = self.id2label[predicted_class]
-            
-            # Apply rule-based correction
-            corrected_emotion, corrected_confidence = self.apply_rule_correction(
-                text, predicted_emotion, confidence
-            )
+            predicted_sentiment = self.id2label[predicted_class]
         
         # Apply threshold
-        if corrected_confidence < self.confidence_threshold:
-            return "Neutral", corrected_confidence
+        if confidence < self.confidence_threshold:
+            return "neutral", confidence, {
+                "positive": float(all_probs[0]),
+                "negative": float(all_probs[1]),
+                "neutral": float(all_probs[2])
+            }
         
-        return corrected_emotion, corrected_confidence
+        return predicted_sentiment, confidence, {
+            "positive": float(all_probs[0]),
+            "negative": float(all_probs[1]),
+            "neutral": float(all_probs[2])
+        }
     
-    def test_on_examples(self):
-        """Test model with corrected examples"""
+    def predict_batch(self, texts: List[str]) -> List[Tuple[str, float]]:
+        """Predict sentiment for multiple texts"""
+        results = []
+        for text in texts:
+            sentiment, confidence, _ = self.predict(text)
+            results.append((sentiment, confidence))
+        return results
+    
+    def test_on_csv(self, csv_path: str, text_col: str = 'cleaned_text', 
+                    label_col: str = 'emotion_class', save_results: bool = True):
+        """Test model on CSV file and show metrics"""
+        
+        print(f"\n{'='*60}")
+        print(f"TESTING ON CSV: {csv_path}")
+        print(f"{'='*60}")
+        
+        # Load CSV
+        df = pd.read_csv(csv_path)
+        print(f"\nTotal samples: {len(df)}")
+        print(f"Columns: {df.columns.tolist()}")
+        
+        # Find text column
+        if text_col not in df.columns:
+            if 'text' in df.columns:
+                text_col = 'text'
+            elif 'cleaned_text' in df.columns:
+                text_col = 'cleaned_text'
+            else:
+                text_col = df.columns[0]
+        
+        print(f"Using text column: '{text_col}'")
+        
+        # Clean data
+        df = df.dropna(subset=[text_col])
+        df[text_col] = df[text_col].astype(str).str.strip()
+        df = df[df[text_col] != '']
+        df = df[df[text_col] != 'nan']
+        
+        texts = df[text_col].tolist()
+        
+        # Check if labels exist
+        has_labels = label_col in df.columns
+        if has_labels:
+            df[label_col] = df[label_col].astype(str).str.strip().str.lower()
+            df = df[~df[label_col].isin(['nan', 'none', ''])]
+            df = df[df[label_col].isin(self.label2id.keys())]
+            df['true_label'] = df[label_col].map(self.label2id)
+            true_labels = df['true_label'].tolist()
+            texts = df[text_col].tolist()
+            print(f"Valid samples with labels: {len(texts)}")
+        
+        # Predict
+        print(f"\nPredicting {len(texts)} samples...")
+        predictions = []
+        confidences = []
+        all_probs = []
+        
+        for text in texts:
+            sentiment, confidence, probs = self.predict(text)
+            predictions.append(sentiment)
+            confidences.append(confidence)
+            all_probs.append(probs)
+        
+        # Create results dataframe
+        results_df = pd.DataFrame({
+            'text': texts,
+            'predicted': predictions,
+            'confidence': confidences
+        })
+        
+        if has_labels:
+            results_df['true'] = df[label_col].values
+            results_df['correct'] = results_df['predicted'] == results_df['true']
+            
+            # Calculate metrics
+            pred_labels = [self.label2id[p] for p in predictions]
+            accuracy = accuracy_score(true_labels, pred_labels)
+            f1 = f1_score(true_labels, pred_labels, average='weighted')
+            
+            print(f"\n{'='*60}")
+            print(f"📊 RESULTS")
+            print(f"{'='*60}")
+            print(f"Accuracy: {accuracy:.3f}")
+            print(f"Weighted F1-Score: {f1:.3f}")
+            
+            print(f"\nClassification Report:")
+            print(classification_report(true_labels, pred_labels, 
+                                      target_names=list(self.label2id.keys())))
+            
+            # Confusion Matrix
+            cm = confusion_matrix(true_labels, pred_labels)
+            plt.figure(figsize=(8, 6))
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                       xticklabels=self.label2id.keys(),
+                       yticklabels=self.label2id.keys())
+            plt.title(f'Confusion Matrix - {os.path.basename(csv_path)}')
+            plt.ylabel('True Label')
+            plt.xlabel('Predicted Label')
+            plt.show()
+        
+        # Show samples
+        print(f"\n{'='*60}")
+        print("SAMPLE PREDICTIONS (First 10)")
+        print(f"{'='*60}")
+        for i in range(min(10, len(results_df))):
+            row = results_df.iloc[i]
+            if has_labels:
+                status = "✓" if row['correct'] else "✗"
+                print(f"{status} Text: {row['text'][:50]}...")
+                print(f"   Predicted: {row['predicted']} ({row['confidence']:.1%}) | True: {row['true']}")
+            else:
+                print(f"  Text: {row['text'][:50]}...")
+                print(f"  Predicted: {row['predicted']} ({row['confidence']:.1%})")
+            print()
+        
+        # Save results
+        if save_results:
+            output_path = csv_path.replace('.csv', '_predictions.csv')
+            results_df.to_csv(output_path, index=False)
+            print(f"✅ Results saved to: {output_path}")
+        
+        return results_df
+    
+    def test_single_texts(self):
+        """Test on individual examples"""
         
         test_examples = [
-            ("ပန်း ခြံ ထဲ မှာ လှ ပ တဲ့ နေ့ လေး", "Joy"),
-            ("ငါ မင်း ကို ချစ် တယ်", "postitive"),
-            ("ငါ အ ရမ်း ကြောက် နေ တယ်", "Fear"),
-            ("ငါ အ ရမ်း စိတ်ဆိုး ဒေါသ ထွက် တယ်", "Anger"),
-            ("ဒီ မ နက် လမ်း အ ရမ်း ပိတ် တယ် စိတ်ညစ် တယ်", "Anger"),
-            ("ငါ ဝမ်း နည်း နေ တယ်", "Sadness"),
-            ("ဒီ နေ့ ရာသီ ဥတု က သာမန် ပဲ", "Neutral"),
-            ("အင်း ဒါ ကို မျှော် လင့် ထား တာ မ ဟုတ် ဘူး အံ့သြ တယ်", "Surprise"),
-            ("ငါ့ ကို ဒေါသ ထွက် စေ တယ်", "Anger"),
-            ("ဒါ က အံ့အား သင့် စရာ ပဲ", "Surprise"),
+            "ဒီနေ့ အရမ်းပျော်တယ်",
+            "ငါ အရမ်းစိတ်ဆိုးတယ်",
+            "ဒါကပုံမှန်ပါပဲ",
+            "မင်းကိုချစ်တယ်",
+            "ငါ့ဘဝအဆုံးသတ်ချင်တယ်",
+            "ကျေးဇူးတင်ပါတယ်",
+            "အဆင်ပြေပါတယ်",
+            "မင်းကို မုန်းတယ်",
         ]
         
         print("\n" + "="*60)
-        print("MODEL TESTING WITH RULE CORRECTIONS")
+        print("TESTING SINGLE TEXTS")
         print("="*60)
         
-        correct = 0
-        corrections_applied = 0
-        
-        for text, expected in test_examples:
-            # Get prediction with correction
-            predicted, confidence = self.predict(text)
-            
-            # Also get raw prediction for comparison
-            inputs = self.tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=64)
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-                raw_class = torch.argmax(torch.softmax(outputs.logits, dim=-1), dim=1).item()
-                raw_pred = self.id2label[raw_class]
-            
-            is_correct = (predicted == expected)
-            correct += is_correct
-            
-            if raw_pred != predicted:
-                corrections_applied += 1
-                status = f"🔄 Corrected: {raw_pred} → {predicted}"
-            else:
-                status = "✅" if is_correct else "❌"
-            
-            emoji_map = {"Joy": "😊", "postitive": "❤️", "Fear": "😨", "Anger": "😠", "Sadness": "😢", "Neutral": "😐", "Surprise": "😲"}
-            
-            print(f"\n{status}")
-            print(f"   Text: {text[:40]}...")
-            print(f"   Expected: {expected} {emoji_map.get(expected, '')}")
-            print(f"   Predicted: {predicted} ({confidence:.1%})")
-        
-        accuracy = correct / len(test_examples)
-        print("\n" + "="*60)
-        print(f"📊 RESULTS WITH RULE CORRECTIONS")
-        print("="*60)
-        print(f"Total tests: {len(test_examples)}")
-        print(f"Correct: {correct}")
-        print(f"Accuracy: {accuracy:.1%}")
-        print(f"Corrections applied: {corrections_applied}")
-        print("="*60)
-        
-        return correct/len(test_examples)
+        for text in test_examples:
+            sentiment, confidence, probs = self.predict(text)
+            print(f"\nText: {text}")
+            print(f"Predicted: {sentiment.upper()} ({confidence:.2%})")
+            print(f"  Positive: {probs['positive']:.2%}")
+            print(f"  Negative: {probs['negative']:.2%}")
+            print(f"  Neutral: {probs['neutral']:.2%}")
 
 
-# Run test
+# Run tests
 if __name__ == "__main__":
+    # Initialize classifier
     classifier = MyanmarEmotionClassifier(
-        model_path="../../models/trained/xlm-roberta-base-emotion",
-        confidence_threshold=0.5  # Lower threshold for testing
+        model_path="../../models/3_class/myanmar_sentiment_final",
+        confidence_threshold=0.5
     )
-    classifier.test_on_examples()
+    
+    # Test on CSV file
+    csv_file = "../../data/accuracy_test/test1_pro.csv"
+    
+    if csv_file and os.path.exists(csv_file):
+        classifier.test_on_csv(csv_file, text_col='cleaned_text', label_col='emotion_class')
+    else:
+        print("\nNo CSV file provided, running example tests...")
+        classifier.test_single_texts()
+    
+    # Interactive mode
+    print("\n" + "="*60)
+    print("INTERACTIVE MODE")
+    print("="*60)
+    print("Enter text to predict (type 'quit' to exit)")
+    
+    while True:
+        text = input("\nEnter Burmese text: ").strip()
+        if text.lower() in ['quit', 'exit', 'q']:
+            print("Goodbye!")
+            break
+        if not text:
+            continue
+        
+        sentiment, confidence, probs = classifier.predict(text)
+        print(f"\nPrediction: {sentiment.upper()} (Confidence: {confidence:.2%})")
+        print(f"  Positive: {probs['positive']:.2%}")
+        print(f"  Negative: {probs['negative']:.2%}")
+        print(f"  Neutral: {probs['neutral']:.2%}")

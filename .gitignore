@@ -1,5 +1,6 @@
 models/7_class
 models/5_class
+models/3_class
 *.yml
 airflow/
 data/raw/

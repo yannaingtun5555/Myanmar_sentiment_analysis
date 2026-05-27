@@ -63,27 +63,15 @@ for label, count in pd.Series(train_labels).value_counts().items():
 
 # Custom class weights with extra weight on neutral class
 # First compute standard balanced weights
-standard_weights = compute_class_weight(
-    'balanced',
-    classes=np.unique(train_labels),
-    y=train_labels
-)
+# Manual weights (direct assignment)
+class_weight_dict = {
+    'positive': 0.89,   # Adjust as needed
+    'negative': 0.89,   # Higher = more importance
+    'neutral': 1.33    # Highest importance
+}
 
-# Create custom weights dictionary
-class_weight_dict = {}
-for i, label in enumerate(unique_labels):
-    if label == 'neutral':
-        # Give 3x more weight to neutral class (adjust multiplier as needed)
-        class_weight_dict[label] = standard_weights[i] * 3.0
-    else:
-        class_weight_dict[label] = standard_weights[i]
-
-# Convert to tensor for PyTorch
+# Convert to tensor
 weights = torch.tensor([class_weight_dict[label] for label in unique_labels], dtype=torch.float)
-if torch.cuda.is_available():
-    weights = weights.cuda()
-
-print(f"\nStandard balanced weights: {dict(zip(unique_labels, standard_weights))}")
 print(f"Custom weights (neutral weighted 3x more): {class_weight_dict}")
 
 # Load tokenizer and model
@@ -126,12 +114,18 @@ model = AutoModelForSequenceClassification.from_pretrained(
 )
 
 # Custom Trainer with weighted loss
+# Custom Trainer with weighted loss - FIXED VERSION
 class WeightedTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         labels = inputs.get("labels")
         outputs = model(**inputs)
         logits = outputs.get('logits')
-        loss_fct = torch.nn.CrossEntropyLoss(weight=weights)
+        
+        # Move weights to the same device as logits (GPU)
+        device = logits.device
+        weights_on_device = weights.to(device)
+        
+        loss_fct = torch.nn.CrossEntropyLoss(weight=weights_on_device)
         loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
         return (loss, outputs) if return_outputs else loss
 

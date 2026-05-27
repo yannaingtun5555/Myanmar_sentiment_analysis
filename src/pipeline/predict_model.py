@@ -2,6 +2,7 @@
 import os
 import yaml
 import torch
+import json
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -37,16 +38,61 @@ def get_db():
         database=db['database'], user=db['user'], password=db['password']
     )
 
+def load_label_mapping(model_path):
+    """Load label mapping from model metadata or config"""
+    # Try to load from metadata.json first
+    metadata_path = os.path.join(model_path, 'metadata.json')
+    if os.path.exists(metadata_path):
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+            if 'id2label' in metadata:
+                id2label = {int(k): v for k, v in metadata['id2label'].items()}
+                print(f"✅ Loaded label mapping from metadata.json")
+                return id2label
+    
+    # Try label_mapping.json
+    label_mapping_path = os.path.join(model_path, 'label_mapping.json')
+    if os.path.exists(label_mapping_path):
+        with open(label_mapping_path, 'r') as f:
+            mapping = json.load(f)
+            if 'id2label' in mapping:
+                id2label = {int(k): v for k, v in mapping['id2label'].items()}
+                print(f"✅ Loaded label mapping from label_mapping.json")
+                return id2label
+    
+    # Try to get from model config
+    print("⚠️ No label mapping file found, trying model config...")
+    return None
+
 def load_model():
     model_path = get_model_path()
+    print(f"Loading model from: {model_path}")
+    
     tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
     model = AutoModelForSequenceClassification.from_pretrained(model_path, local_files_only=True)
+    
+    # Load label mapping
+    id2label = load_label_mapping(model_path)
+    
+    if id2label is None:
+        # Try to get from model config
+        if hasattr(model.config, 'id2label') and model.config.id2label:
+            id2label = {int(k): v for k, v in model.config.id2label.items()}
+            print(f"✅ Loaded label mapping from model config")
+        else:
+            # Default for 3 classes
+            print("⚠️ Using default label mapping (3 classes)")
+            id2label = {0: "positive", 1: "negative", 2: "neutral"}
+    
+    print(f"📋 Label mapping: {id2label}")
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     model.eval()
-    return tokenizer, model, device
+    
+    return tokenizer, model, device, id2label
 
-def predict(text, tokenizer, model, device):
+def predict(text, tokenizer, model, device, id2label):
     inputs = tokenizer(text, return_tensors='pt', truncation=True, max_length=128, padding=True)
     inputs = {k: v.to(device) for k, v in inputs.items()}
     
@@ -56,8 +102,10 @@ def predict(text, tokenizer, model, device):
         pred_id = torch.argmax(probs, dim=1).item()
         confidence = probs[0][pred_id].item()
     
-    label_map = {0: 'Anger', 1: 'Fear', 2: 'Joy', 3: 'postitive', 4: 'Neutral', 5: 'Sadness', 6: 'Surprise'}
-    return label_map[pred_id], confidence
+    # Use label mapping from model
+    predicted_label = id2label.get(pred_id, f"class_{pred_id}")
+    
+    return predicted_label, confidence
 
 def main():
     conn = get_db()
@@ -79,7 +127,7 @@ def main():
             return
         
         print(f"Loading model from {get_model_path()}")
-        tokenizer, model, device = load_model()
+        tokenizer, model, device, id2label = load_model()
         print(f"Using device: {device}")
         print(f"Predicting {len(comments)} comments")
         
@@ -87,7 +135,7 @@ def main():
         req_ids = set()
         
         for c in comments:
-            label, confidence = predict(c['text_unicode'], tokenizer, model, device)
+            label, confidence = predict(c['text_unicode'], tokenizer, model, device, id2label)
             
             cur.execute("""
                 INSERT INTO predictions (comment_id, req_id, model_prediction, model_confidence, created_at)
